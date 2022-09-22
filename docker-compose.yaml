@@ -1,0 +1,88 @@
+version: "3.3"
+services:
+  redpanda:
+    image: vectorized/redpanda:v22.2.2
+    container_name: redpanda
+    env_file:
+      - ./env/redpanda.env
+    networks:
+      - internal
+    command:
+      - redpanda start
+      - --overprovisioned
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --node-id 0
+      - --check=false
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr redpanda:8082
+      - --set redpanda.enable_transactions=true
+      - --set redpanda.enable_idempotence=true
+      - --set redpanda.auto_create_topics_enabled=true
+  console:
+    image: vectorized/console:latest
+    container_name: console
+    env_file:
+      - ./env/console.env
+    networks:
+      - internal
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redpanda
+    volumes:
+      - ./etc/console/config.yaml:/tmp/config.yaml
+  connect:
+    image: confluentinc/cp-kafka-connect-base:6.2.0
+    container_name: connect
+    env_file:
+      - ./env/connect.env
+    networks:
+      - internal
+    depends_on:
+      - redpanda
+    command:
+      - bash
+      - -c
+      - |
+        echo "Installing Connectors"
+        confluent-hub install --no-prompt debezium/debezium-connector-mysql:1.9.3
+        confluent-hub install --no-prompt confluentinc/kafka-connect-elasticsearch:14.0.0
+        #
+        echo "Launching Connect"
+        /etc/confluent/docker/run &
+        #
+        sleep infinity
+  materialized:
+    image: materialize/materialized:v0.26.4
+    container_name: materialized
+    env_file:
+      - ./env/materialized.env
+    networks:
+      - internal
+    command:
+      - --workers
+      - "1"
+  mysql:
+    image: debezium/example-mysql:1.6
+    container_name: mysql
+    env_file:
+      - ./env/mysql.env
+    networks:
+      - internal
+  elastic:
+    image: elasticsearch:7.17.6
+    container_name: elastic
+    networks:
+      - internal
+    environment:
+      - "discovery.type=single-node"
+      - "xpack.security.enabled=false"
+
+networks:
+  internal:
+    name: internal
+    driver: bridge

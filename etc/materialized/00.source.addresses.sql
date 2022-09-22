@@ -1,0 +1,2 @@
+CREATE SOURCE addresses FROM KAFKA BROKER 'redpanda:29092' TOPIC 'dbserver1.inventory.addresses'
+FORMAT AVRO USING CONFLUENT SCHEMA REGISTRY 'http://redpanda:8081' ENVELOPE DEBEZIUM;
